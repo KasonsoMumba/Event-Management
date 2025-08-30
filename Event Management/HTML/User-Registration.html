@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device_width, initial-scale=1.0">
+      <link rel="stylesheet" href="../stylesheets.css" >
+      <title>User Registration</title>
+</head>
+<body>
+      <h1> User Registration</h1>
+      <Form Action="../php/Register.php" method="POST">
+
+      <div class="form-group">
+         <label for="Email">Email:</label>
+         <input type="Email" id="Email" name="Email" required>
+      </div>
+
+     
+      <div class="form-group">
+         <label for="Password">Password:</label>
+         <input type="Password" id="Password" name="Password" required>
+      </div>
+
+
+       <div class="form-group">
+         <label for="Firstname">Firstname:</label>
+         <input type="text" id="Firstname" name="Firstname" required>
+      </div>
+
+
+       <div class="form-group">
+         <label for="Lastname">Lastname:</label>
+         <input type="text" id="Lastname" name="Lastname" required>
+       </div>
+
+
+       <div class="form-group">
+         <label for="ContactNumber">ContactNumber:</label>
+         <input type="text" id="ContactNumber" name="ContactNumber" required>
+       </div>
+        
+        <div class="form-group">
+          <label for=":Role">Register as</label>
+          <select id="Role"  name="Role" required>
+            <option value="Attendee">Attendee</option>
+            <option value="Organizer">Organizer</option>
+          </select>
+        </div>
+
+        <button type="submit">Register</button>
+     </form>
+
+     <p>Already have an account? <a href="login.html">Login Here</a></p>
+
+
+</body>
+</html>

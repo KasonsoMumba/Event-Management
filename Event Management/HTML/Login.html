@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+      
+      <meta name="viewport" content="width=device_width, initial-scale=1.0">
+      <link rel="stylesheet" href="../stylesheets.css">
+      <title> Login</title>
+</head>
+<body>
+    <div class="login-container">
+        
+        <h1>Login</h1>
+        <p class="subtitle">Access your event management dashboard</p>
+        
+        <form id="loginForm" action="../php/Login.php" method="POST">
+            
+            <input type="hidden" name="Role" value="Organizer">
+            
+            <div class="form-group">
+                <label for="Email">Email Address</label><br>
+                <input type="email" id="Email" name="Email" placeholder="you@example.com" required="">
+            </div>
+            <br>
+            <div class="form-group">
+                <label for="Password">Password</label>
+                    <div class="password-container">
+                       <input type="password" id="Password" name="Password" placeholder="Enter your password" required="">
+                        <span class="toggle-password" onclick="togglePassword()">
+                        <br>
+
+           <div class="signup-prompt">
+            <p>Don't have an account? <a href="User-Registration.html" class="signup-link">Sign up here</a></p>
+        </div>               
+                       </span></div>
+            </div>
+            <br>
+            
+          
+           <button type="submit">Login to Dashboard</button>
+        </form>
+
+          <div class="options">
+                <div class="remember-me">
+                    <input type="checkbox" id="remember">
+                    <label for="remember">Remember me</label>
+                </div>
+                <a href="file:///C:/Users/Kasonso/Desktop/Computer%20science/Event%20Management/HTML/Organizer-Login.html" class="forgot-password">Forgot password?</a>
+            </div>
+
+    
+
+
+
+
+</div>
+</body>
+</html>
