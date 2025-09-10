@@ -2,6 +2,17 @@
 session_start();
 include 'db_connect.php';
 
+// Check if user is logged in
+$isLoggedIn = isset($_SESSION['UserID']);
+$userName = $isLoggedIn ? ($_SESSION['FirstName'] ?? 'User') : '';
+
+// Handle logout if requested
+if (isset($_GET['logout'])) {
+    session_destroy();
+    header("Location: ../HTML/Login.html");
+    exit();
+}
+
 // Get EventID from URL parameter
 $eventID = isset($_GET['EventID']) ? intval($_GET['EventID']) : 0;
 
@@ -17,9 +28,23 @@ if (!$event) {
     die("Event not found.");
 }
 
+// Add Image_Path column if it doesn't exist
+$checkImageColumn = $conn->query("SHOW COLUMNS FROM Events LIKE 'Image_Path'");
+if ($checkImageColumn->num_rows == 0) {
+    $conn->query("ALTER TABLE Events ADD COLUMN Image_Path VARCHAR(255) AFTER Description");
+    // Re-fetch event data after adding the column
+    $eventQuery = "SELECT * FROM Events WHERE EventID = ?";
+    $stmt = $conn->prepare($eventQuery);
+    $stmt->bind_param("i", $eventID);
+    $stmt->execute();
+    $event = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+}
+
 // Set default values for potentially null fields
 $event['Title'] = $event['Title'] ?? 'Untitled Event';
 $event['Description'] = $event['Description'] ?? 'No description available';
+$event['Image_Path'] = $event['Image_Path'] ?? null;
 $event['Venue_Name'] = $event['Venue_Name'] ?? 'Venue not specified';
 $event['Status'] = $event['Status'] ?? 'Unknown';
 $event['Capacity'] = $event['Capacity'] ?? 0;
@@ -42,8 +67,67 @@ $ticketStmt->close();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= htmlspecialchars($event['Title']) ?> - Event Details</title>
-    <link rel="stylesheet" href="../stylesheets.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
+        /* Navigation Styles */
+        .navbar {
+            background: #1e3a8a;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 6px 10px -4px rgba(0,0,0,0.25);
+            margin-bottom: 2rem;
+            border-bottom: 1px solid #9ca3af;
+        }
+        
+        .nav-brand {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: white;
+            text-decoration: none;
+        }
+        
+        .nav-menu {
+            display: flex;
+            list-style: none;
+            gap: 2rem;
+            align-items: center;
+            margin: 0;
+        }
+        
+        .nav-item a {
+            color: white;
+            text-decoration: none;
+            font-weight: 500;
+            transition: opacity 0.3s;
+        }
+        
+        .nav-item a:hover {
+            opacity: 0.8;
+        }
+        
+        .user-menu {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            color: white;
+        }
+        
+        .btn-logout {
+            background: rgba(255, 255, 255, 0.18);
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .btn-logout:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        
         .event-container {
             max-width: 1200px;
             margin: 0 auto;
@@ -56,7 +140,7 @@ $ticketStmt->close();
         }
         
         .event-header h1 {
-            color: #4361ee;
+            color: #1e3a8a;
             margin-bottom: 10px;
         }
         
@@ -107,8 +191,9 @@ $ticketStmt->close();
         
         .ticket-card {
             background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-radius: 6px;
+            box-shadow: none;
+            border: 1px solid #9ca3af;
             padding: 20px;
             margin-bottom: 20px;
         }
@@ -129,7 +214,7 @@ $ticketStmt->close();
         .ticket-price {
             font-size: 20px;
             font-weight: bold;
-            color: #4361ee;
+            color: #1e3a8a;
         }
         
         .ticket-description {
@@ -140,16 +225,17 @@ $ticketStmt->close();
         .btn-purchase {
             display: inline-block;
             padding: 10px 20px;
-            background-color: #4361ee;
+            background-color: #1f2937;
             color: white;
-            border-radius: 5px;
+            border-radius: 6px;
             text-decoration: none;
             font-weight: bold;
-            transition: background-color 0.3s;
+            transition: background-color 0.2s;
+            border: 1px solid #9ca3af;
         }
         
         .btn-purchase:hover {
-            background-color: #3a56d4;
+            background-color: #111827;
         }
         
         .event-status {
@@ -199,6 +285,29 @@ $ticketStmt->close();
     </style>
 </head>
 <body>
+    <!-- Navigation Bar -->
+    <nav class="navbar">
+        <a href="../HTML/Index.html" class="nav-brand">
+            Event Management System
+        </a>
+        
+        <ul class="nav-menu">
+            <li class="nav-item"><a href="Attendee-dashboard.php"><i class="fas fa-calendar-alt"></i> Events</a></li>
+            <li class="nav-item"><a href="my_tickets.php"><i class="fas fa-ticket-alt"></i> My Tickets</a></li>
+            <li class="nav-item"><a href="profile.php"><i class="fas fa-user"></i> Profile</a></li>
+        </ul>
+        
+        <div class="user-menu">
+            <?php if ($isLoggedIn): ?>
+                <span><i class="fas fa-user-circle"></i> Welcome, <?= htmlspecialchars($userName) ?></span>
+                <a href="?EventID=<?= $eventID ?>&logout=true" class="btn-logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
+            <?php else: ?>
+                <a href="../HTML/Login.html"><i class="fas fa-sign-in-alt"></i> Login</a>
+                <a href="../HTML/User-Registration.html"><i class="fas fa-user-plus"></i> Register</a>
+            <?php endif; ?>
+        </div>
+    </nav>
+
     <div class="event-container">
         <div class="event-header">
             <h1><?= htmlspecialchars($event['Title']) ?></h1>
@@ -213,8 +322,18 @@ $ticketStmt->close();
         
         <div class="event-content">
             <div class="event-image">
-                <!-- Placeholder for event image - you can replace with actual image from your database -->
-                <img src="https://via.placeholder.com/600x400?text=Event+Image" alt="Event Image">
+                <?php if (!empty($event['Image_Path'])): ?>
+                    <img src="../<?= htmlspecialchars($event['Image_Path']) ?>" alt="<?= htmlspecialchars($event['Title']) ?> Event Image">
+                <?php else: ?>
+                    <!-- Placeholder for event image when no image is uploaded -->
+                    <img src="https://via.placeholder.com/600x400?text=Event+Image" alt="Event Image">
+                <?php endif; ?>
+                <!-- Debug info (remove in production) -->
+                <?php if (isset($_GET['debug'])): ?>
+                    <div style="position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); color: white; padding: 5px; font-size: 12px;">
+                        Image Path: <?= htmlspecialchars($event['Image_Path'] ?? 'NULL') ?>
+                    </div>
+                <?php endif; ?>
             </div>
             
             <div class="event-details">
@@ -247,15 +366,15 @@ $ticketStmt->close();
                         <div class="ticket-description">
                             Standard admission to the event
                         </div>
-                        <?php if (isset($_SESSION['UserID'])): ?>
-                            <a href="Purchase_Ticket.php?TicketTypeID=<?= $ticket['TicketTypeID'] ?? 0 ?>" class="btn-purchase">
-                                Purchase Ticket
-                            </a>
-                        <?php else: ?>
-                            <a href="Login.html" class="btn-purchase">
-                                Login to Purchase
-                            </a>
-                        <?php endif; ?>
+                                                 <?php if (isset($_SESSION['UserID'])): ?>
+                             <a href="Purchase_Ticket.php?EventID=<?= $eventID ?>&TicketTypeID=<?= $ticket['TicketTypeID'] ?? 0 ?>" class="btn-purchase">
+                                 Purchase Ticket
+                             </a>
+                         <?php else: ?>
+                             <a href="../HTML/Login.html" class="btn-purchase">
+                                 Login to Purchase
+                             </a>
+                         <?php endif; ?>
                     </div>
                 <?php endforeach; ?>
             <?php else: ?>

@@ -2,6 +2,25 @@
 session_start();
 include 'db_connect.php';
 
+// Check if user is logged in
+$isLoggedIn = isset($_SESSION['UserID']);
+$userName = $isLoggedIn ? ($_SESSION['FirstName'] ?? 'User') : '';
+$user_id = $isLoggedIn ? $_SESSION['UserID'] : 0;
+
+// Handle form submission
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Process the registration form
+    processRegistration($conn, $user_id);
+    exit();
+}
+
+// Handle logout if requested
+if (isset($_GET['logout'])) {
+    session_destroy();
+    header("Location: ../HTML/Login.html");
+    exit();
+}
+
 if (!isset($_GET['event_id'])) {
     die("No event selected.");
 }
@@ -20,12 +39,20 @@ if (!$event) {
     die("Event not found.");
 }
 
-// Fetch ticket types from TicketTypes table (CORRECTED)
-$tickets_sql = "SELECT * FROM TicketTypes WHERE EventID = ?";
+// Fetch ALL ticket types from TicketTypes table
+$tickets_sql = "SELECT * FROM TicketTypes WHERE EventID = ? ORDER BY Price ASC";
 $tickets_stmt = $conn->prepare($tickets_sql);
+if (!$tickets_stmt) {
+    die("Error preparing ticket query: " . $conn->error);
+}
 $tickets_stmt->bind_param("i", $event_id);
-$tickets_stmt->execute();
+if (!$tickets_stmt->execute()) {
+    die("Error executing ticket query: " . $tickets_stmt->error);
+}
 $tickets_result = $tickets_stmt->get_result();
+if (!$tickets_result) {
+    die("Error getting ticket result: " . $tickets_stmt->error);
+}
 
 $tickets = [];
 while ($row = $tickets_result->fetch_assoc()) {
@@ -52,6 +79,173 @@ foreach ($tickets as &$ticket) {
         $ticket['availability_message'] = 'Sold out';
     }
 }
+unset($ticket); // Unset the reference to prevent issues
+
+// Process registration function
+function processRegistration($conn, $user_id) {
+    // Validate user session
+    if (!$user_id) {
+        http_response_code(401);
+        exit(json_encode(['success' => false, 'message' => 'You must be logged in to register for events.']));
+    }
+
+    // Get form data
+    $event_id = isset($_POST['event_id']) ? intval($_POST['event_id']) : 0;
+    $payment_method = isset($_POST['payment_method']) ? htmlspecialchars($_POST['payment_method'], ENT_QUOTES, 'UTF-8') : '';
+    $tickets_json = isset($_POST['tickets']) ? $_POST['tickets'] : '';
+
+    // Get attendee information
+    $first_name = isset($_POST['first_name']) ? htmlspecialchars($_POST['first_name'], ENT_QUOTES, 'UTF-8') : '';
+    $last_name = isset($_POST['last_name']) ? htmlspecialchars($_POST['last_name'], ENT_QUOTES, 'UTF-8') : '';
+    $email = isset($_POST['email']) ? htmlspecialchars($_POST['email'], ENT_QUOTES, 'UTF-8') : '';
+    $phone = isset($_POST['phone']) ? htmlspecialchars($_POST['phone'], ENT_QUOTES, 'UTF-8') : '';
+    $address = isset($_POST['address']) ? htmlspecialchars($_POST['address'], ENT_QUOTES, 'UTF-8') : '';
+    $city = isset($_POST['city']) ? htmlspecialchars($_POST['city'], ENT_QUOTES, 'UTF-8') : '';
+    $postal_code = isset($_POST['postal_code']) ? htmlspecialchars($_POST['postal_code'], ENT_QUOTES, 'UTF-8') : '';
+    $country = isset($_POST['country']) ? htmlspecialchars($_POST['country'], ENT_QUOTES, 'UTF-8') : '';
+    $special_requirements = isset($_POST['special_requirements']) ? htmlspecialchars($_POST['special_requirements'], ENT_QUOTES, 'UTF-8') : '';
+    $how_heard = isset($_POST['how_heard']) ? htmlspecialchars($_POST['how_heard'], ENT_QUOTES, 'UTF-8') : '';
+
+    // Validate required fields
+    if (!$event_id || empty($payment_method) || empty($tickets_json) || 
+        empty($first_name) || empty($last_name) || empty($email) || empty($phone)) {
+        http_response_code(400);
+        $error_msg = "Missing required fields: ";
+        if (!$event_id) $error_msg .= "event_id ";
+        if (empty($payment_method)) $error_msg .= "payment_method ";
+        if (empty($tickets_json)) $error_msg .= "tickets ";
+        if (empty($first_name)) $error_msg .= "first_name ";
+        if (empty($last_name)) $error_msg .= "last_name ";
+        if (empty($email)) $error_msg .= "email ";
+        if (empty($phone)) $error_msg .= "phone ";
+        exit(json_encode(['success' => false, 'message' => $error_msg]));
+    }
+
+    // Parse tickets JSON
+    $tickets_data = json_decode($tickets_json, true);
+    if (!$tickets_data || !is_array($tickets_data)) {
+        http_response_code(400);
+        exit(json_encode(['success' => false, 'message' => 'Invalid ticket data format.']));
+    }
+
+    // Check if any tickets were selected
+    $total_tickets = 0;
+    foreach ($tickets_data as $ticket_type_id => $quantity) {
+        if ($quantity > 0) {
+            $total_tickets += $quantity;
+        }
+    }
+
+    if ($total_tickets <= 0) {
+        http_response_code(400);
+        exit(json_encode(['success' => false, 'message' => 'Please select at least one ticket.']));
+    }
+
+    // Validate event exists and get organizer ID
+    $event_stmt = $conn->prepare("SELECT * FROM Events WHERE EventID = ?");
+    $event_stmt->bind_param("i", $event_id);
+    $event_stmt->execute();
+    $event_result = $event_stmt->get_result();
+
+    if ($event_result->num_rows === 0) {
+        http_response_code(404);
+        exit(json_encode(['success' => false, 'message' => 'Event not found.']));
+    }
+
+    $event = $event_result->fetch_assoc();
+    $organizer_id = $event['OrganizerID'];
+
+    // Start transaction
+    $conn->begin_transaction();
+
+    try {
+        $total_price = 0;
+        $registration_ids = [];
+        
+        // Process each ticket type
+        foreach ($tickets_data as $ticket_type_id => $quantity) {
+            if ($quantity <= 0) continue;
+            
+            // Validate ticket type exists and belongs to this event
+            $ticket_stmt = $conn->prepare("SELECT * FROM TicketTypes WHERE TicketTypeID = ? AND EventID = ?");
+            $ticket_stmt->bind_param("ii", $ticket_type_id, $event_id);
+            $ticket_stmt->execute();
+            $ticket_result = $ticket_stmt->get_result();
+            
+            if ($ticket_result->num_rows === 0) {
+                throw new Exception("Ticket type not found or does not belong to this event.");
+            }
+            
+            $ticket = $ticket_result->fetch_assoc();
+            
+            // Check if enough tickets are available
+            if ($ticket['Quantity_Available'] < $quantity) {
+                throw new Exception("Not enough tickets available for " . $ticket['Type'] . ". Only " . $ticket['Quantity_Available'] . " tickets remaining.");
+            }
+            
+            // Calculate price for this ticket type
+            $ticket_price = $ticket['Price'] * $quantity;
+            $total_price += $ticket_price;
+            
+            // Insert registration record for this ticket type with Pending status
+            $registration_stmt = $conn->prepare("INSERT INTO Registrations (EventID, UserID, TicketTypeID, Registration_Date, Status, Payment_Status, Payment_Method, Amount_Paid, First_Name, Last_Name, Email, Phone, Address, City, Postal_Code, Country, Special_Requirements, How_Heard) VALUES (?, ?, ?, NOW(), 'Pending', 'Awaiting Payment', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $registration_stmt->bind_param("iiissssssssssss", 
+                $event_id, $user_id, $ticket_type_id, $payment_method, $ticket_price,
+                $first_name, $last_name, $email, $phone, $address, $city, $postal_code, $country, $special_requirements, $how_heard
+            );
+            
+            if (!$registration_stmt->execute()) {
+                throw new Exception("Failed to create registration: " . $conn->error);
+            }
+            
+            $registration_id = $conn->insert_id;
+            $registration_ids[] = $registration_id;
+            
+            // Create payment confirmation record for organizer review
+            $payment_confirmation_stmt = $conn->prepare("INSERT INTO PaymentConfirmations (RegistrationID, OrganizerID, Status) VALUES (?, ?, 'Pending')");
+            $payment_confirmation_stmt->bind_param("ii", $registration_id, $organizer_id);
+            
+            if (!$payment_confirmation_stmt->execute()) {
+                throw new Exception("Failed to create payment confirmation record: " . $conn->error);
+            }
+            
+            // Note: We are NOT updating ticket availability here - that will happen after organizer approval
+            
+            $ticket_stmt->close();
+            $registration_stmt->close();
+            $payment_confirmation_stmt->close();
+        }
+        
+        // Commit transaction
+        $conn->commit();
+        
+        // Return success response
+        echo json_encode([
+            'status' => 'success',
+            'message' => 'Registration submitted successfully! Your tickets are pending approval from the organizer.',
+            'registration_ids' => $registration_ids,
+            'total_price' => $total_price,
+            'tickets_requested' => $total_tickets
+        ]);
+        
+    } catch (Exception $e) {
+        // Rollback transaction on error
+        $conn->rollback();
+        
+        http_response_code(500);
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'An error occurred: ' . $e->getMessage()
+        ]);
+    }
+
+    // Close statements and connection
+    $event_stmt->close();
+    $conn->close();
+    exit();
+}
+
+// If not a POST request, display the registration form
 ?>
 
 <!DOCTYPE html>
@@ -60,20 +254,80 @@ foreach ($tickets as &$ticket) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Event Registration: <?= htmlspecialchars($event['Title']) ?></title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
+        /* Navigation Styles */
+        .navbar {
+            background: #1e3a8a;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 6px 10px -4px rgba(0,0,0,0.25);
+            margin-bottom: 2rem;
+            border-bottom: 1px solid #9ca3af;
+        }
+        
+        .nav-brand {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: white;
+            text-decoration: none;
+        }
+        
+        .nav-menu {
+            display: flex;
+            list-style: none;
+            gap: 2rem;
+            align-items: center;
+            margin: 0;
+        }
+        
+        .nav-item a {
+            color: white;
+            text-decoration: none;
+            font-weight: 500;
+            transition: opacity 0.3s;
+        }
+        
+        .nav-item a:hover {
+            opacity: 0.8;
+        }
+        
+        .user-menu {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            color: white;
+        }
+        
+        .btn-logout {
+            background: rgba(255, 255, 255, 0.18);
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: var(--radius);
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .btn-logout:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        
         :root {
-            --primary: #4361ee;
-            --primary-dark: #3a56d4;
-            --secondary: #7209b7;
-            --success: #2ec4b6;
-            --warning: #ff9f1c;
-            --danger: #e71d36;
-            --light: #f8f9fa;
-            --dark: #212529;
-            --gray: #6c757d;
-            --border: #dee2e6;
-            --shadow: 0 4px 6px rgba(0,0,0,0.1);
-            --radius: 8px;
+            --primary: #1e3a8a;
+            --primary-dark: #162a66;
+            --secondary: #1f2937;
+            --success: #16a34a;
+            --warning: #b45309;
+            --danger: #b91c1c;
+            --light: #f3f4f6;
+            --dark: #111827;
+            --gray: #4b5563;
+            --border: #9ca3af;
+            --shadow: 0 6px 10px -4px rgba(0,0,0,0.25);
+            --radius: 6px;
         }
         
         * {
@@ -96,37 +350,18 @@ foreach ($tickets as &$ticket) {
         }
         
         header {
-            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            background: var(--primary-dark);
             color: white;
             padding: 2rem;
             border-radius: var(--radius);
             margin-bottom: 2rem;
-            box-shadow: var(--shadow);
+            box-shadow: none;
+            border: 1px solid var(--border);
             position: relative;
             overflow: hidden;
         }
         
-        header::before {
-            content: '';
-            position: absolute;
-            top: -50px;
-            right: -50px;
-            width: 200px;
-            height: 200px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 50%;
-        }
-        
-        header::after {
-            content: '';
-            position: absolute;
-            bottom: -30px;
-            left: -30px;
-            width: 150px;
-            height: 150px;
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 50%;
-        }
+        header::before, header::after { display: none; }
         
         .event-title {
             font-size: 2.5rem;
@@ -177,8 +412,9 @@ foreach ($tickets as &$ticket) {
             background: white;
             border-radius: var(--radius);
             padding: 2rem;
-            box-shadow: var(--shadow);
+            box-shadow: none;
             margin-bottom: 2rem;
+            border: 1px solid var(--border);
         }
         
         .section-title {
@@ -200,15 +436,15 @@ foreach ($tickets as &$ticket) {
             border: 1px solid var(--border);
             border-radius: var(--radius);
             padding: 1.5rem;
-            transition: all 0.3s ease;
+            transition: all 0.2s ease;
             position: relative;
             overflow: hidden;
         }
         
         .ticket-card:hover {
-            transform: translateY(-5px);
-            box-shadow: var(--shadow);
-            border-color: var(--primary);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 16px -8px rgba(0,0,0,0.35);
+            border-color: var(--secondary);
         }
         
         .ticket-type {
@@ -297,7 +533,8 @@ foreach ($tickets as &$ticket) {
             background: white;
             border-radius: var(--radius);
             padding: 2rem;
-            box-shadow: var(--shadow);
+            box-shadow: none;
+            border: 1px solid var(--border);
             position: sticky;
             top: 20px;
             height: fit-content;
@@ -382,21 +619,21 @@ foreach ($tickets as &$ticket) {
             display: block;
             width: 100%;
             padding: 15px;
-            background: var(--primary);
+            background: var(--secondary);
             color: white;
-            border: none;
+            border: 1px solid var(--border);
             border-radius: var(--radius);
             font-size: 1.1rem;
             font-weight: 600;
             cursor: pointer;
-            transition: background 0.3s;
+            transition: background 0.2s;
             text-align: center;
             text-decoration: none;
             margin-top: 1.5rem;
         }
         
         .btn:hover {
-            background: var(--primary-dark);
+            background: #111827;
         }
         
         .btn:disabled {
@@ -470,10 +707,46 @@ foreach ($tickets as &$ticket) {
             color: var(--gray);
             margin-bottom: 0.5rem;
         }
+        
+        .status-banner {
+            background: var(--warning);
+            color: white;
+            padding: 10px;
+            text-align: center;
+            margin-bottom: 20px;
+            border-radius: var(--radius);
+        }
     </style>
 </head>
 <body>
+    <!-- Navigation Bar -->
+    <nav class="navbar">
+        <a href="../HTML/Index.html" class="nav-brand">
+            Event Management System
+        </a>
+        
+        <ul class="nav-menu">
+            <li class="nav-item"><a href="Attendee-dashboard.php"><i class="fas fa-calendar-alt"></i> Events</a></li>
+            <li class="nav-item"><a href="my_tickets.php"><i class="fas fa-ticket-alt"></i> My Tickets</a></li>
+            <li class="nav-item"><a href="profile.php"><i class="fas fa-user"></i> Profile</a></li>
+        </ul>
+        
+        <div class="user-menu">
+            <?php if ($isLoggedIn): ?>
+                <span><i class="fas fa-user-circle"></i> Welcome, <?= htmlspecialchars($userName) ?></span>
+                <a href="?event_id=<?= $event_id ?>&logout=true" class="btn-logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
+            <?php else: ?>
+                <a href="../HTML/Login.html"><i class="fas fa-sign-in-alt"></i> Login</a>
+                <a href="../HTML/User-Registration.html"><i class="fas fa-user-plus"></i> Register</a>
+            <?php endif; ?>
+        </div>
+    </nav>
+
     <div class="container">
+        <div class="status-banner">
+            <i class="fas fa-info-circle"></i> Your registration will be pending until approved by the organizer.
+        </div>
+        
         <header>
             <h1 class="event-title"><?= htmlspecialchars($event['Title']) ?></h1>
             <p><?= htmlspecialchars($event['Description']) ?></p>
@@ -672,7 +945,7 @@ foreach ($tickets as &$ticket) {
                     <span id="total">ZMK 0.00</span>
                 </div>
                 
-                <form action="Process-TicketRegistration.php" method="POST" id="registration-form">
+                <form action="" method="POST" id="registration-form">
                     <input type="hidden" name="event_id" value="<?= $event['EventID'] ?>">
                     
                     <div class="payment-section">
@@ -703,6 +976,12 @@ foreach ($tickets as &$ticket) {
     </div>
     
     <script>
+        // Check if user is logged in
+        <?php if (!$isLoggedIn): ?>
+        alert('You must be logged in to register for events. Redirecting to login page...');
+        window.location.href = '../HTML/Login.html';
+        <?php endif; ?>
+        
         document.addEventListener('DOMContentLoaded', function() {
             // Elements
             const quantityInputs = document.querySelectorAll('.quantity-input');
@@ -761,6 +1040,7 @@ foreach ($tickets as &$ticket) {
             // Form validation
             function isFormValid() {
                 let isValid = true;
+                // Get ALL required fields, including dynamically added ones
                 const requiredFields = form.querySelectorAll('[required]');
                 
                 requiredFields.forEach(field => {
@@ -859,7 +1139,7 @@ foreach ($tickets as &$ticket) {
                 });
                 
                 // Form field validation
-                const formFields = form.querySelectorAll('input, select');
+                const formFields = form.querySelectorAll('input, select, textarea');
                 formFields.forEach(field => {
                     field.addEventListener('blur', function() {
                         if (this.hasAttribute('required') && !this.value.trim()) {
@@ -881,7 +1161,10 @@ foreach ($tickets as &$ticket) {
             function setupPaymentMethod() {
                 paymentMethod.addEventListener('change', function() {
                     updatePaymentDetails(this.value);
-                    registerBtn.disabled = !isFormValid();
+                    // Re-validate form after payment method change
+                    setTimeout(() => {
+                        registerBtn.disabled = !isFormValid();
+                    }, 100);
                 });
                 
                 // Initial payment details
@@ -961,15 +1244,41 @@ foreach ($tickets as &$ticket) {
                         }
                         registerBtn.disabled = !isFormValid();
                     });
+                    
+                    // Also validate on input for better UX
+                    field.addEventListener('input', function() {
+                        if (this.value.trim()) {
+                            hideError(this.id + '_error');
+                        }
+                        registerBtn.disabled = !isFormValid();
+                    });
                 });
+                
+                // Re-validate form after adding new fields
+                registerBtn.disabled = !isFormValid();
             }
             
             // Form submission handler
             form.addEventListener('submit', function(e) {
                 e.preventDefault();
                 
+                // Double-check validation before submission
+                console.log('Form validation check...');
                 if (!isFormValid()) {
+                    console.log('Form validation failed');
                     alert('Please fill in all required fields correctly');
+                    return false;
+                }
+                console.log('Form validation passed');
+                
+                // Additional validation: ensure at least one ticket is selected
+                let ticketCount = 0;
+                quantityInputs.forEach(input => {
+                    ticketCount += parseInt(input.value) || 0;
+                });
+                
+                if (ticketCount === 0) {
+                    alert('Please select at least one ticket');
                     return false;
                 }
                 
@@ -989,8 +1298,25 @@ foreach ($tickets as &$ticket) {
                 // Append tickets JSON
                 formData.append('tickets', JSON.stringify(ticketsData));
                 
+                // Append all attendee information
+                const attendeeFields = ['first_name', 'last_name', 'email', 'phone', 'address', 
+                                       'city', 'postal_code', 'country', 'special_requirements', 'how_heard'];
+                
+                attendeeFields.forEach(field => {
+                    const element = document.getElementById(field);
+                    if (element) {
+                        formData.append(field, element.value);
+                    }
+                });
+                
+                // Debug: Log what's being sent
+                console.log('FormData contents:');
+                for (let pair of formData.entries()) {
+                    console.log(pair[0] + ': ' + pair[1]);
+                }
+                
                 // Submit via AJAX
-                fetch('Process-TicketRegistration.php', {
+                fetch('', {
                     method: 'POST',
                     body: formData
                 })
@@ -1004,8 +1330,8 @@ foreach ($tickets as &$ticket) {
                 })
                 .then(data => {
                     if (data && data.status === 'success') {
-                        alert('Registration successful!');
-                        window.location.href = 'registration_success.php?registration_id=' + data.registration_id;
+                        alert('Registration submitted successfully! Your tickets are pending approval from the organizer.');
+                        window.location.href = 'my_tickets.php';
                     } else {
                         const msg = data && data.message ? data.message : 'An unknown error occurred.';
                         alert('Error: ' + msg);

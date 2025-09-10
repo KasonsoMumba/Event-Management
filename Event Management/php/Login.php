@@ -48,7 +48,7 @@ if ($result->num_rows === 1) {
                 header("Location: Attendee-Dashboard.php");
                 break;
             default:
-                header("Location: Login_failed.html");
+                header("Location: Login_failed.php");
                 break;
         }
         exit();
@@ -56,7 +56,7 @@ if ($result->num_rows === 1) {
 }
 
 // Login failed
-header("Location: Login_failed.html");
+header("Location: Login_failed.php");
 exit();
 
 // Clean up
