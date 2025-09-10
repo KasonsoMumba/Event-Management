@@ -1,51 +1,484 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <link rel="stylesheet" href="../stylesheets.css">
-      <title>Create Event</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Event - Event Management System</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #4361ee;
+            --primary-light: #4895ef;
+            --primary-dark: #3a56d4;
+            --secondary: #7209b7;
+            --secondary-light: #9b5de5;
+            --success: #2ec4b6;
+            --warning: #ff9f1c;
+            --danger: #e71d36;
+            --light: #f8f9fa;
+            --dark: #212529;
+            --gray: #6c757d;
+            --border: #dee2e6;
+            --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            --radius: 12px;
+            --transition: all 0.3s ease;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            position: relative;
+            overflow: auto;
+            margin: 0;
+        }
+        
+        html {
+            overflow: hidden;
+        }
+        
+        /* Background decoration */
+        body::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 70%);
+            animation: float 20s ease-in-out infinite;
+            pointer-events: none;
+            z-index: 1;
+        }
+        
+        body::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="50" cy="50" r="1" fill="rgba(255,255,255,0.1)"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>');
+            opacity: 0.3;
+            pointer-events: none;
+            z-index: 1;
+        }
+        
+        @keyframes float {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-20px) rotate(180deg); }
+        }
+        
+        .create-event-container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            padding: 3rem 2.5rem;
+            width: 100%;
+            max-width: 600px;
+            position: relative;
+            z-index: 10;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            animation: slideUp 0.6s ease-out;
+        }
+        
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .create-event-header {
+            text-align: center;
+            margin-bottom: 2.5rem;
+        }
+        
+        .logo {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1.5rem;
+            box-shadow: 0 8px 25px rgba(67, 97, 238, 0.3);
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        
+        .logo i {
+            font-size: 2rem;
+            color: white;
+        }
+        
+        .create-event-title {
+            font-size: 2.2rem;
+            font-weight: 700;
+            color: var(--dark);
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .create-event-subtitle {
+            color: var(--gray);
+            font-size: 1.1rem;
+            line-height: 1.6;
+        }
+        
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .form-row .form-group input {
+            padding: 0.8rem 0.8rem 0.8rem 2.5rem;
+            font-size: 0.9rem;
+        }
+        
+        .form-row .input-container i {
+            left: 0.8rem;
+            font-size: 1rem;
+        }
+        
+        .form-group {
+            margin-bottom: 1.5rem;
+            position: relative;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            color: var(--dark);
+            font-size: 0.95rem;
+        }
+        
+        .input-container {
+            position: relative;
+        }
+        
+        .input-container i {
+            position: absolute;
+            left: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--gray);
+            font-size: 1.1rem;
+            transition: var(--transition);
+        }
+        
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 1rem 1rem 1rem 3rem;
+            border: 2px solid var(--border);
+            border-radius: var(--radius);
+            font-size: 1rem;
+            transition: var(--transition);
+            background: white;
+            color: var(--dark);
+            font-family: inherit;
+        }
+        
+        .form-group textarea {
+            resize: vertical;
+            min-height: 100px;
+            padding-top: 1rem;
+        }
+        
+        .form-group input:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.1);
+        }
+        
+        .form-group input:focus + i {
+            color: var(--primary);
+        }
+        
+        .form-group textarea:focus + i {
+            color: var(--primary);
+        }
+        
+        .submit-btn {
+            width: 100%;
+            padding: 1rem;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            border: none;
+            border-radius: var(--radius);
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            margin-bottom: 1.5rem;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .submit-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.5s;
+        }
+        
+        .submit-btn:hover::before {
+            left: 100%;
+        }
+        
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(67, 97, 238, 0.3);
+        }
+        
+        .submit-btn:active {
+            transform: translateY(0);
+        }
+        
+        .back-link {
+            text-align: center;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--border);
+            color: var(--gray);
+        }
+        
+        .back-link a {
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 600;
+            margin-left: 0.5rem;
+            transition: var(--transition);
+        }
+        
+        .back-link a:hover {
+            color: var(--primary-dark);
+            text-decoration: underline;
+        }
+        
+        /* Responsive Design */
+        @media (max-width: 480px) {
+            .create-event-container {
+                padding: 2rem 1.5rem;
+                margin: 1rem;
+            }
+            
+            .create-event-title {
+                font-size: 1.8rem;
+            }
+            
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        /* Loading state */
+        .submit-btn.loading {
+            pointer-events: none;
+            opacity: 0.8;
+        }
+        
+        .submit-btn.loading::after {
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            top: 50%;
+            left: 50%;
+            margin-left: -10px;
+            margin-top: -10px;
+            border: 2px solid transparent;
+            border-top: 2px solid white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Form validation styles */
+        .form-group input:invalid,
+        .form-group textarea:invalid {
+            border-color: var(--gray);
+        }
+        
+        .form-group input:valid,
+        .form-group textarea:valid {
+            border-color: var(--gray);
+        }
+    </style>
 </head>
 <body>
-      <h1>Create New Event</h1>
-      <form action="../php/Create_Event.php" method="POST">
-
-        <div class="form-group">
-           <label for="Title">Event Title:</label>
-           <input type="text" id="Title" name="Title" required>
+    <div class="create-event-container">
+        <div class="create-event-header">
+            <div class="logo">
+                <i class="fas fa-calendar-plus"></i>
+            </div>
+            <h1 class="create-event-title">Create New Event</h1>
+            <p class="create-event-subtitle">Fill in the details below to create your amazing event</p>
         </div>
-
-        <div class="form-group">
-           <label for="OrganizerID">Organizer ID:</label>
-           <input type="number" id="OrganizerID" name="OrganizerID" required>
+        
+        <form id="createEventForm" action="../php/Create_Event.php" method="POST">
+            <div class="form-group">
+                <label for="Title">Event Title</label>
+                <div class="input-container">
+                    <i class="fas fa-heading"></i>
+                    <input type="text" id="Title" name="Title" placeholder="Enter your event title" required>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="OrganizerID">Organizer ID</label>
+                <div class="input-container">
+                    <i class="fas fa-user-tie"></i>
+                    <input type="number" id="OrganizerID" name="OrganizerID" placeholder="Enter your organizer ID" required>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="Description">Event Description</label>
+                <div class="input-container">
+                    <i class="fas fa-align-left"></i>
+                    <textarea id="Description" name="Description" placeholder="Describe your event in detail..." required></textarea>
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="Start_Date">Start Date & Time</label>
+                    <div class="input-container">
+                        <i class="fas fa-calendar-alt"></i>
+                        <input type="datetime-local" id="Start_Date" name="Start_Date" required>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="End_Date">End Date & Time</label>
+                    <div class="input-container">
+                        <i class="fas fa-calendar-check"></i>
+                        <input type="datetime-local" id="End_Date" name="End_Date" required>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="Venue">Venue</label>
+                <div class="input-container">
+                    <i class="fas fa-map-marker-alt"></i>
+                    <input type="text" id="Venue" name="Venue" placeholder="Enter the event venue" required>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="Capacity">Event Capacity</label>
+                <div class="input-container">
+                    <i class="fas fa-users"></i>
+                    <input type="number" id="Capacity" name="Capacity" min="1" placeholder="Maximum number of attendees" required>
+                </div>
+            </div>
+            
+            <button type="submit" class="submit-btn" id="submitBtn">
+                <span class="btn-text">Create Event</span>
+            </button>
+        </form>
+        
+        <div class="back-link">
+            <i class="fas fa-arrow-left"></i> Back to<a href="../php/Organizer-dashboard.php">Dashboard</a>
         </div>
+    </div>
 
-        <div class="form-group">
-           <label for="Description">Description:</label>
-           <textarea id="Description" name="Description" rows="4" required></textarea>
-        </div>
-
-        <div class="form-group">
-           <label for="Start_Date">Start Date & Time:</label>
-           <input type="datetime-local" id="Start_Date" name="Start_Date" required>
-        </div>
-
-        <div class="form-group">
-           <label for="End_Date">End Date & Time:</label>
-           <input type="datetime-local" id="End_Date" name="End_Date" required>
-        </div>
-
-        <div class="form-group">
-           <label for="Venue">Venue:</label>
-           <input type="text" id="Venue" name="Venue" required>
-        </div>
-
-        <div class="form-group">
-           <label for="Capacity">Capacity:</label>
-           <input type="number" id="Capacity" name="Capacity" min="1" required>
-        </div>
-
-        <button type="submit">Create Event</button>
-      </form>
+    <script>
+        // Form submission with loading state
+        document.getElementById('createEventForm').addEventListener('submit', function(e) {
+            const submitBtn = document.getElementById('submitBtn');
+            const btnText = submitBtn.querySelector('.btn-text');
+            
+            // Add loading state
+            submitBtn.classList.add('loading');
+            btnText.textContent = 'Creating Event...';
+            
+            // Remove loading state after a delay (in case of errors)
+            setTimeout(() => {
+                submitBtn.classList.remove('loading');
+                btnText.textContent = 'Create Event';
+            }, 5000);
+        });
+        
+        // Add some interactive effects
+        document.querySelectorAll('.form-group input, .form-group textarea').forEach(input => {
+            input.addEventListener('focus', function() {
+                this.parentElement.style.transform = 'scale(1.02)';
+            });
+            
+            input.addEventListener('blur', function() {
+                this.parentElement.style.transform = 'scale(1)';
+            });
+        });
+        
+        // Date validation
+        document.getElementById('Start_Date').addEventListener('change', function() {
+            const startDate = new Date(this.value);
+            const endDateInput = document.getElementById('End_Date');
+            
+            if (startDate) {
+                endDateInput.min = this.value;
+            }
+        });
+        
+        document.getElementById('End_Date').addEventListener('change', function() {
+            const endDate = new Date(this.value);
+            const startDateInput = document.getElementById('Start_Date');
+            
+            if (endDate && startDateInput.value) {
+                const startDate = new Date(startDateInput.value);
+                if (endDate <= startDate) {
+                    alert('End date must be after start date');
+                    this.value = '';
+                }
+            }
+        });
+        
+        // Capacity validation
+        document.getElementById('Capacity').addEventListener('input', function() {
+            if (this.value < 1) {
+                this.setCustomValidity('Capacity must be at least 1');
+            } else {
+                this.setCustomValidity('');
+            }
+        });
+    </script>
 </body>
 </html>
